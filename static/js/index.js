@@ -10,7 +10,10 @@ const startBtn = document.getElementById("startBtn");
 const backBtn = document.getElementById("backBtn");
 const statusEl = document.getElementById("status");
 
-const MIN_Q = 3;                 // no upper limit: the server asks the AI and reports if the passage cannot support it
+const MIN_Q = 3;
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILES = 5;
+const ALLOWED_EXT = [".txt", ".pdf"];
 
 function setStatus(msg, isError) {
     statusEl.textContent = msg;
@@ -31,9 +34,17 @@ fileInput.addEventListener("change", () => {
         return;
     }
 
-    const oversized = Array.from(fileInput.files).some(f => f.size > 10 * 1024 * 1024);
-    if (oversized) {
-        alert("One or more files are too large. Max size is 10MB.");
+    const files = Array.from(fileInput.files);
+    let problem = "";
+    if (files.length > MAX_FILES) {
+        problem = `Select at most ${MAX_FILES} files.`;
+    } else if (files.some(f => f.size > MAX_FILE_BYTES)) {
+        problem = "One or more files are too large. Max size is 10MB per file.";
+    } else if (files.some(f => !ALLOWED_EXT.some(ext => f.name.toLowerCase().endsWith(ext)))) {
+        problem = "Only .txt and .pdf files are supported.";
+    }
+    if (problem) {
+        alert(problem);
         fileInput.value = "";
         fileNameDisplay.textContent = "No file selected";
         generateQuizBtn.hidden = true;
@@ -46,7 +57,6 @@ fileInput.addEventListener("change", () => {
     generateQuizBtn.hidden = false;
 });
 
-// Step 1 -> step 2: ask how many questions BEFORE anything is sent or the quiz page opens
 generateQuizBtn.addEventListener("click", () => {
     setStatus("", false);
     stepFile.hidden = true;
@@ -65,7 +75,7 @@ document.querySelectorAll('input[name="countMode"]').forEach(radio => {
         const isMax = countMode() === "max";
         countInput.disabled = isMax;
         countHelp.textContent = isMax
-            ? "As many questions as the chapter supports."
+            ? "About one question per 40 words of the chapter, up to 90 in total."
             : `At least ${MIN_Q} questions, split across Easy, Medium and Hard. There is no upper limit.`;
     });
 });
@@ -87,7 +97,7 @@ startBtn.addEventListener("click", async () => {
     for (const file of fileInput.files) formData.append("fileInput", file);
     formData.append("count", count);
 
-    startBtn.disabled = true;                  // stops double-clicks firing several (paid) Groq calls
+    startBtn.disabled = true;
     backBtn.disabled = true;
     setStatus("Generating quiz... this can take up to a minute.", false);
 

@@ -1,4 +1,3 @@
-/* Shared star counter. Loaded on every page; the total lives in localStorage so it survives reloads. */
 (function () {
     const KEY = 'chapterEscape.stars';
 
@@ -8,7 +7,7 @@
     }
 
     function write(n) {
-        try { localStorage.setItem(KEY, String(n)); } catch (e) { /* private mode: count lasts for this page only */ }
+        try { localStorage.setItem(KEY, String(n)); } catch (e) {}
     }
 
     function render(pop) {
@@ -17,7 +16,7 @@
         if (!pop) return;
         document.querySelectorAll('.stars-badge').forEach(badge => {
             badge.classList.remove('pop');
-            void badge.offsetWidth;                 // restart the animation
+            void badge.offsetWidth;
             badge.classList.add('pop');
         });
     }

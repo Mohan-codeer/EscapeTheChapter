@@ -1,93 +1,152 @@
+import atexit
+import io
 import json
 import os
 import random
 import re
 import secrets
+import time
 import uuid
 
 import requests
 from dotenv import load_dotenv
 from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from pypdf import PdfReader
 from werkzeug.utils import secure_filename
 
 load_dotenv()
 
 app = Flask(__name__)
 
-# A missing SECRET_KEY must not silently fall back to a publicly known string
-# (anyone could forge session cookies). Generate a random one instead.
 _secret = os.getenv("SECRET_KEY")
 if not _secret:
     print("WARNING: SECRET_KEY not set in .env - using a random key (sessions reset on restart).")
     _secret = secrets.token_hex(32)
 app.secret_key = _secret
 
-app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024  # matches the 10MB limit in index.js
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_FILES = 5
+app.config["MAX_CONTENT_LENGTH"] = MAX_FILES * MAX_FILE_BYTES + 64 * 1024
 
-QUIZ_FOLDER = "quizzes"  # parsed quizzes live on disk: Flask's cookie session caps out at ~4KB
+QUIZ_FOLDER = "quizzes"
+QUIZ_MAX_AGE = 3600
 os.makedirs(QUIZ_FOLDER, exist_ok=True)
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_URL = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_MODEL = "openai/gpt-oss-120b"
-MAX_CHARS = 60000  # keep the prompt inside the model's context window
+MAX_PDF_PAGES = 200
+MAX_CHARS = 60000
 
 TIERS = ["easy", "medium", "hard"]
 TYPES = ["mcq", "trueorfalse", "numerical", "matching"]
 
-MIN_Q = 3                   # smallest total the user can ask for (one per level at least)
-                            # there is no upper limit: ask for as many as you like. If the passage cannot
-                            # support that many, the model answers with code "2" (see AI_CODES below).
+MIN_Q = 3
+WORDS_PER_QUESTION = 40
+MAX_AUTO_Q = 90
 DEFAULT_HINT = "Re-read the part of the chapter this question is about."
 DEFAULT_TOPIC = "General"
 
-# Replies the model may send INSTEAD of a quiz. The prompt tells it to answer with just the digit.
 AI_CODES = {
-    "1": "This passage may be too short to generate more questions.",
+    "1": "This passage is too short to generate a worthwhile quiz.",
     "2": ("The passage may not contain enough information for the requested number of questions. "
           "Try reducing the number of questions or adding more text."),
-    "3": "Please enter a textbook passage before generating questions.",
+    "3": "No readable text was found. Please upload a .txt file or a PDF that contains selectable text.",
 }
 
 
+class ExtractionError(Exception):
+    pass
+
+
+def purge_folder(path, max_age=None):
+    if not os.path.isdir(path):
+        return
+    now = time.time()
+    for entry in os.scandir(path):
+        if not entry.is_file(follow_symlinks=False):
+            continue
+        if max_age is None or now - entry.stat().st_mtime > max_age:
+            try:
+                os.remove(entry.path)
+            except OSError:
+                pass
+
+
+def purge_all():
+    purge_folder(QUIZ_FOLDER)
+
+
+purge_all()
+atexit.register(purge_all)
+
+
+def pdf_to_text(data):
+    texts = []
+    try:
+        reader = PdfReader(io.BytesIO(data))
+        if reader.is_encrypted and not reader.decrypt(""):
+            raise ExtractionError("This PDF is password protected.")
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise ExtractionError(f"This PDF has more than {MAX_PDF_PAGES} pages.")
+        for page in reader.pages:
+            try:
+                texts.append((page.extract_text() or "").strip())
+            except Exception:
+                texts.append("")
+    except ExtractionError:
+        raise
+    except Exception:
+        raise ExtractionError("Could not read this PDF.")
+
+    return "\n".join(t for t in texts if t)
+
+
+def extract_text(filename, data):
+    ext = os.path.splitext(filename)[1].lower()
+    if ext == ".txt":
+        return data.decode("utf-8", errors="ignore")
+    if ext == ".pdf":
+        if b"%PDF" not in data[:1024]:
+            raise ExtractionError(f"'{filename}' is not a valid PDF.")
+        return pdf_to_text(data)
+    raise ExtractionError(f"'{filename}' is not supported - upload .txt or .pdf files.")
+
+
+def split_total(n):
+    base, rem = divmod(n, 3)
+    return {"easy": base + (rem >= 1), "medium": base + (rem >= 2), "hard": base}
+
+
 def tier_targets(raw):
-    """'max' -> (None, True): as many as the text supports.
-    A number -> that many in total, split over the levels, no upper limit."""
     raw = (raw or "max").strip().lower()
     if raw == "max":
-        return {t: None for t in TIERS}, True
-    n = max(MIN_Q, int(raw))                  # int() raises ValueError for junk, handled by the route
-    base, rem = divmod(n, 3)
-    return {"easy": base + (rem >= 1), "medium": base + (rem >= 2), "hard": base}, False
+        return None
+    return split_total(max(MIN_Q, int(raw)))
 
 
-def completion_budget(targets, is_max):
-    """Output tokens to allow. Every question carries 3 hints, an explanation and a topic, so ~300 tokens each."""
-    if is_max:
-        return 24000
+def auto_targets(text):
+    words = len(text.split())
+    return split_total(min(MAX_AUTO_Q, max(MIN_Q, words // WORDS_PER_QUESTION)))
+
+
+def completion_budget(targets):
     return min(32000, 1500 + 300 * sum(targets.values()))
 
 
-def build_prompt(targets, is_max):
-    if is_max:
-        amount = ("For each tier write as many good, non-repetitive questions as the text supports, "
-                  "at least 3 per tier. Never pad or repeat questions. ")
-        too_many = ""
-    else:
-        total = sum(targets.values())
-        amount = (f"Write exactly {targets['easy']} easy, {targets['medium']} medium and {targets['hard']} hard "
-                  f"questions ({total} in total). ")
-        too_many = ("If the passage is long enough for a quiz but clearly does not contain enough information "
-                    f"for {total} distinct questions, reply with ONLY the digit 2. ")
+def build_prompt(targets):
+    total = sum(targets.values())
+    amount = (f"Write exactly {targets['easy']} easy, {targets['medium']} medium and {targets['hard']} hard "
+              f"questions ({total} in total). ")
+    too_many = ("If the passage is long enough for a quiz but clearly does not contain enough information "
+                f"for {total} distinct questions, reply with ONLY the digit 2. ")
     return (
         "You write quizzes from study material. "
-        # --- special replies: a single digit instead of a quiz -------------------------------------------
         "FIRST check the passage. If it is empty or only whitespace, reply with ONLY the digit 3. "
         "If it is too short or too thin to build a worthwhile quiz at all (for example one or two sentences), "
         "reply with ONLY the digit 1. "
         + too_many +
         "When you reply with a digit, output that single digit and nothing else: no words, no punctuation. "
-        # --- normal quiz output --------------------------------------------------------------------------
         "Otherwise respond with ONE single line and NO newline characters. "
         "No markdown, no commentary, no text outside the formats below. "
         + amount +
@@ -114,9 +173,7 @@ def build_prompt(targets, is_max):
     )
 
 
-# ---------------------------------------------------------------- parsing helpers
 def _normalize_mcq(answer, options):
-    """Return 'a'-'d' or None. Accepts 'b', 'B)', 'b) Paris' or the option's full text."""
     a = answer.strip().lower()
     if a in ("a", "b", "c", "d"):
         return a
@@ -139,38 +196,31 @@ def _normalize_tf(answer):
 
 
 def _tail(extras):
-    """extras = tokens after the fixed fields -> (hints, explanation, topic) or None.
-
-    Expected: hint1, hint2, hint3, explanation, topic. Shorter replies are tolerated so one sloppy line
-    from the model does not throw the whole question away.
-    """
     n = len(extras)
     if n >= 5:
         return extras[0:3], extras[3], extras[4]
-    if n == 4:                              # three hints and an explanation, no topic
+    if n == 4:
         return extras[0:3], extras[3], DEFAULT_TOPIC
-    if n == 3:                              # hint, explanation, topic
+    if n == 3:
         return [extras[0]], extras[1], extras[2]
-    if n == 2:                              # hint, explanation
+    if n == 2:
         return [extras[0]], extras[1], DEFAULT_TOPIC
-    if n == 1:                              # explanation only
+    if n == 1:
         return [DEFAULT_HINT], extras[0], DEFAULT_TOPIC
     return None
 
 
 def parse_quiz_data(raw_content):
-    """Parse the LLM line into {'easy': [...], 'medium': [...], 'hard': [...]}."""
     quiz = {tier: [] for tier in TIERS}
     skipped = 0
 
     for block in raw_content.split("<start>")[1:]:
         if "<end>" not in block:
-            skipped += 1  # truncated output - the last question is incomplete
+            skipped += 1
             continue
         tokens = [t.strip() for t in block.split("<end>")[0].split("$%/")]
         tokens = [t for t in tokens if t]
 
-        # leading tokens: tier and type, in whichever order the model wrote them
         tier = q_type = None
         i = 0
         while i < len(tokens) and i < 2:
@@ -207,11 +257,10 @@ def parse_quiz_data(raw_content):
             if tail:
                 item = {"type": "numerical", "question": data[0], "answer": data[1],
                         "hints": tail[0], "explanation": tail[1], "topic": tail[2]}
-        elif q_type == "matching" and len(data) >= 10:   # question + 2 pairs + 3 hints + explanation + topic
-            # variable length, so read hint1-3, explanation and topic from the end
+        elif q_type == "matching" and len(data) >= 10:
             hints, explanation, topic = data[-5:-2], data[-2], data[-1]
             rest = data[1:-5]
-            if len(rest) % 2 == 1:                      # model added an 'answer' field anyway - ignore it
+            if len(rest) % 2 == 1:
                 rest = rest[:-1]
             pairs = [{"left": rest[k], "right": rest[k + 1]} for k in range(0, len(rest), 2)]
             if len(pairs) >= 2:
@@ -228,8 +277,8 @@ def parse_quiz_data(raw_content):
     return quiz
 
 
-# ---------------------------------------------------------------- storage
 def save_quiz(quiz, topic):
+    delete_quiz()
     quiz_id = uuid.uuid4().hex
     with open(os.path.join(QUIZ_FOLDER, f"{quiz_id}.json"), "w", encoding="utf-8") as f:
         json.dump({"topic": topic, "tiers": quiz}, f)
@@ -237,7 +286,6 @@ def save_quiz(quiz, topic):
 
 
 def load_quiz():
-    """Return (tiers_dict, topic); ({}, '') when nothing valid is stored."""
     quiz_id = session.get("quiz_id", "")
     if not re.fullmatch(r"[0-9a-f]{32}", quiz_id):
         return {}, ""
@@ -247,7 +295,7 @@ def load_quiz():
         tiers = data.get("tiers", {})
         for questions in tiers.values():
             for q in questions:
-                if "hints" not in q:                 # quizzes saved before progressive hints existed
+                if "hints" not in q:
                     q["hints"] = [q.get("hint") or DEFAULT_HINT]
                 q.setdefault("topic", DEFAULT_TOPIC)
         return tiers, data.get("topic", "Chapter Quiz")
@@ -255,14 +303,21 @@ def load_quiz():
         return {}, ""
 
 
+def delete_quiz():
+    quiz_id = session.pop("quiz_id", "")
+    if re.fullmatch(r"[0-9a-f]{32}", quiz_id):
+        try:
+            os.remove(os.path.join(QUIZ_FOLDER, f"{quiz_id}.json"))
+        except OSError:
+            pass
+
+
 def topic_from_filenames(names):
-    """'climate_change-notes.txt' -> 'climate change notes' (+N more for several files)."""
     stem = os.path.splitext(secure_filename(names[0]))[0]
     stem = re.sub(r"[_\-]+", " ", stem).strip()[:60] or "Chapter Quiz"
     return stem if len(names) == 1 else f"{stem} +{len(names) - 1} more"
 
 
-# ---------------------------------------------------------------- routes
 @app.template_filter("shuffle")
 def shuffle_filter(seq):
     try:
@@ -281,6 +336,7 @@ def index():
 @app.route("/quiz")
 def quiz():
     questions, topic = load_quiz()
+    delete_quiz()
     if not any(questions.get(t) for t in TIERS):
         return redirect(url_for("index"))
     return render_template("quiz.html", questions=questions, topic=topic)
@@ -288,7 +344,7 @@ def quiz():
 
 @app.errorhandler(413)
 def too_large(_e):
-    return jsonify({"error": "Upload too large (max 10MB)."}), 413
+    return jsonify({"error": "Upload too large (max 10MB per file and 5 files)."}), 413
 
 
 @app.route("/upload", methods=["POST"])
@@ -300,33 +356,43 @@ def upload_file():
         return jsonify({"error": "GROQ_API_KEY is missing from the server's .env file."}), 500
 
     try:
-        targets, is_max = tier_targets(request.form.get("count"))
+        targets = tier_targets(request.form.get("count"))
     except ValueError:
         return jsonify({"error": "Number of questions must be a whole number or 'maximum'."}), 400
 
-    # Read every file (the old loop returned after the first .txt and silently
-    # ignored everything else, including unsupported types).
+    if len(files) > MAX_FILES:
+        return jsonify({"error": f"Upload at most {MAX_FILES} files at a time."}), 400
+
+    purge_folder(QUIZ_FOLDER, QUIZ_MAX_AGE)
+
     texts = []
     for file in files:
-        name = secure_filename(file.filename)
-        if os.path.splitext(name)[1].lower() != ".txt":
-            return jsonify({"error": f"'{file.filename}' is not supported yet - upload .txt files."}), 400
-        texts.append(file.read().decode("utf-8", errors="ignore"))
+        data = file.read(MAX_FILE_BYTES + 1)
+        if len(data) > MAX_FILE_BYTES:
+            return jsonify({"error": f"'{file.filename}' is larger than 10MB."}), 400
+        try:
+            texts.append(extract_text(file.filename, data))
+        except ExtractionError as exc:
+            return jsonify({"error": str(exc)}), 400
+        finally:
+            del data
 
     file_content = "\n\n".join(texts).strip()
-    if not file_content:                     # code 3, answered locally so no Groq call is wasted
+    if not file_content:
         return jsonify({"error": AI_CODES["3"], "code": 3}), 422
     file_content = file_content[:MAX_CHARS]
+    if targets is None:
+        targets = auto_targets(file_content)
 
     payload = {
         "model": GROQ_MODEL,
         "messages": [
-            {"role": "system", "content": build_prompt(targets, is_max)},
+            {"role": "system", "content": build_prompt(targets)},
             {"role": "user", "content": f"Generate quiz questions based on the following text:\n\n{file_content}"},
         ],
         "temperature": 0.4,
-        "max_completion_tokens": completion_budget(targets, is_max),   # grows with the number of questions
-        "reasoning_effort": "low",       # gpt-oss: less hidden reasoning, faster reply
+        "max_completion_tokens": completion_budget(targets),
+        "reasoning_effort": "low",
     }
     headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
 
@@ -346,15 +412,13 @@ def upload_file():
     except (ValueError, KeyError, IndexError):
         return jsonify({"error": "Unexpected response from Groq."}), 502
 
-    # The model answers with a lone digit instead of a quiz when the passage cannot support one.
     code = re.fullmatch(r"\W*([123])\W*", raw_content.strip())
     if code:
         return jsonify({"error": AI_CODES[code.group(1)], "code": int(code.group(1))}), 422
 
     quiz_data = parse_quiz_data(raw_content)
-    for tier in TIERS:                       # the model sometimes writes more than asked for
-        if targets[tier] is not None:
-            quiz_data[tier] = quiz_data[tier][:targets[tier]]
+    for tier in TIERS:
+        quiz_data[tier] = quiz_data[tier][:targets[tier]]
     if not any(quiz_data[t] for t in TIERS):
         return jsonify({"error": "The model's reply couldn't be parsed. Please try again."}), 502
 

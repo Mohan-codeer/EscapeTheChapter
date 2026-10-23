@@ -8,7 +8,6 @@
 </head>
 <body>
 
-{# icon sprite: referenced with <use href="#i-..."> #}
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></symbol>
     <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M13.5 9.5l2.2 2.2"/></symbol>
@@ -24,7 +23,6 @@
     </div>
 </header>
 
-{# escape path: Easy -> Key -> Medium -> Gate -> Hard -> Exit. JS sets data-state on every piece #}
 <nav class="path" aria-label="Escape progress">
     <div class="p-node" data-tier="easy" data-state="active"><span class="p-dot">1</span><span class="p-name">Easy</span></div>
     <span class="p-line"></span>
@@ -49,10 +47,8 @@
                 <h1 class="quiz-title">{{ topic }}: {{ tier | capitalize }} Level</h1>
                 <p class="quiz-sub">Question <span class="q-num">1</span> of {{ questions[tier] | length }}</p>
 
-                {# onsubmit: a lone text input would otherwise submit the form on Enter and reload the page #}
                 <form class="quizForm" data-tier="{{ tier }}" onsubmit="return false;">
                 {% for q in questions[tier] %}
-                    {# loop.index0 inside an inner loop is the OPTION index, so save the question index here #}
                     {% set qi = loop.index0 %}
                     <div class="question-card {% if loop.first %}active{% endif %}" data-index="{{ qi }}" data-answer="{{ q.answer | default('') }}" data-type="{{ q.type }}" data-topic="{{ q.topic | default('General') }}">
                         <h2 class="q-text">{{ loop.index }}. {{ q.question }}</h2>
@@ -100,8 +96,6 @@
                             </div>
                         {% endif %}
 
-                        {# Hints: three, increasingly helpful. Hidden until the first wrong answer; each further
-                           wrong answer adds the next one (see wrongAttempt in quiz.js). #}
                         <div class="hint-src" hidden>{% for h in q.hints %}<span>{{ h }}</span>{% endfor %}</div>
                         <details class="hint" hidden>
                             <summary>
@@ -113,7 +107,6 @@
                             <ol class="hint-list"></ol>
                         </details>
 
-                        {# Verdict shows after every attempt; the explanation only once the question is finished #}
                         <div class="feedback" hidden>
                             <div class="verdict"></div>
                             <div class="explanation" hidden>
@@ -140,7 +133,6 @@
         <div class="card result" hidden>
             <h1 class="res-title">Level Complete!</h1>
 
-            {# reward: the key (Easy), the gate (Medium) or the exit (Hard); filled in by showResult #}
             <div class="reward" hidden>
                 <div class="reward-icon"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg></div>
                 <div class="reward-name"></div>

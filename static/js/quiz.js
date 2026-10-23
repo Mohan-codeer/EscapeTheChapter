@@ -1,12 +1,11 @@
 const tiers = ['easy', 'medium', 'hard'];
-const PASS_PERCENT = 60;                 // share of the marks needed to clear a level (retries give partial marks)
-const MARKS = [1, 0.6, 0.3, 0.1, 0];     // marks for a question by number of wrong attempts before the right answer
-const MAX_WRONG = 4;                     // the 4th wrong attempt reveals the answer (marks 0); hints 1-3 come before it
-const STAR_STEPS = [70, 85, 95, 100];    // overall % needed for stars 2, 3, 4 and 5 (escaping always gives 1 star)
+const PASS_PERCENT = 60;
+const MARKS = [1, 0.6, 0.3, 0.1, 0];
+const MAX_WRONG = 4;
+const STAR_STEPS = [70, 85, 95, 100];
 let currentTier = 'easy';
-let starsAwarded = false;                // one award per run, even if the final screen is opened again
+let starsAwarded = false;
 
-// what the player holds / has cleared (drives the path at the top of the page)
 const earned = { key: false, gate: false, exit: false };
 const cleared = { easy: false, medium: false, hard: false };
 
@@ -30,9 +29,7 @@ const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 const sectionOf = tier => document.getElementById(`tier-${tier}`);
 const cardsOf = sec => $$('.question-card', sec);
 const activeIndex = sec => cardsOf(sec).findIndex(c => c.classList.contains('active'));
-const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
-/* ------------------------------------------------------------ escape path (Easy - Key - Medium - Gate - Hard - Exit) */
 function updateTracker() {
     $$('.p-node').forEach(node => {
         const t = node.dataset.tier;
@@ -42,7 +39,6 @@ function updateTracker() {
     $$('.p-item').forEach(item => { item.dataset.state = earned[item.dataset.item] ? 'earned' : 'locked'; });
 }
 
-/* ------------------------------------------------------------ answered? / controls */
 function isAnswered(card) {
     const type = card.dataset.type;
     if (type === 'mcq' || type === 'trueorfalse') return !!$('input[type="radio"]:checked', card);
@@ -86,7 +82,6 @@ function stepCard(btn, direction) {
     showCard(sec, Math.max(0, Math.min(n - 1, activeIndex(sec) + direction)));
 }
 
-/* The one centred button: Submit -> Next -> See results */
 function primaryAction(tier) {
     const sec = sectionOf(tier);
     const cards = cardsOf(sec);
@@ -104,7 +99,6 @@ function primaryAction(tier) {
     }
 }
 
-/* ------------------------------------------------------------ radios: click again to deselect */
 function syncOptions(card) {
     $$('.option', card).forEach(o => o.classList.toggle('selected', $('input', o).checked));
 }
@@ -129,14 +123,13 @@ document.addEventListener('input', e => {
     updateControls();
 });
 
-document.addEventListener('keydown', e => {                    // Enter in the number box = Submit / Next
+document.addEventListener('keydown', e => {
     if (e.key === 'Enter' && e.target.matches('.num-input')) {
         e.preventDefault();
         primaryAction(currentTier);
     }
 });
 
-/* ------------------------------------------------------------ matching: drag & drop + tap fallback */
 let draggedChip = null;
 let selectedChip = null;
 
@@ -151,10 +144,10 @@ function refreshZones(container) {
 function placeChip(chip, zone) {
     const container = zone.closest('.matching-container');
     if (chip.closest('.matching-container') !== container) return;
-    if (zone.classList.contains('zone-correct') || chip.closest('.zone-correct')) return;   // solved rows stay put
+    if (zone.classList.contains('zone-correct') || chip.closest('.zone-correct')) return;
     const pool = $('.draggable-pool', container);
     const existing = $('.drag-item', zone);
-    if (existing && existing !== chip) pool.appendChild(existing);   // displaced chip returns to the pool
+    if (existing && existing !== chip) pool.appendChild(existing);
     zone.appendChild(chip);
     refreshZones(container);
 }
@@ -175,7 +168,7 @@ function allowDrop(ev) { ev.preventDefault(); }
 
 function drag(ev) {
     draggedChip = ev.target.closest('.drag-item');
-    ev.dataTransfer.setData('text/plain', draggedChip ? draggedChip.dataset.text : '');   // Firefox needs data set
+    ev.dataTransfer.setData('text/plain', draggedChip ? draggedChip.dataset.text : '');
 }
 
 function drop(ev, zone) {
@@ -195,7 +188,6 @@ function dropToPool(ev) {
     clearSelection();
 }
 
-// Tap fallback (HTML5 drag & drop is unreliable on touch screens)
 document.addEventListener('click', function (e) {
     const container = e.target.closest('.matching-container');
     if (!container || container.closest('.locked')) return;
@@ -218,19 +210,16 @@ document.addEventListener('click', function (e) {
     }
 });
 
-/* ------------------------------------------------------------ grading (one question at a time) */
 function firstNumber(str) {
     const m = String(str).replace(/,/g, '').match(/-?\d*\.?\d+(?:e[-+]?\d+)?/i);
     return m ? parseFloat(m[0]) : NaN;
 }
 
-/* Marks for a finished question. True/False only has two options, so a retry after a wrong pick earns nothing. */
 function marksFor(type, wrong) {
     if (type === 'trueorfalse' && wrong > 0) return 0;
     return MARKS[Math.min(wrong, MARKS.length - 1)];
 }
 
-/* Is the current answer right? Also paints per-row / per-option state that is safe to show on a wrong try. */
 function checkAnswer(card) {
     const type = card.dataset.type;
     const correct = card.dataset.answer.trim().toLowerCase();
@@ -245,7 +234,7 @@ function checkAnswer(card) {
         const want = firstNumber(correct);
         let ok;
         if (Number.isNaN(want)) {
-            ok = raw.toLowerCase() === correct;                      // non-numeric answer: plain compare
+            ok = raw.toLowerCase() === correct;
         } else {
             const got = firstNumber(raw);
             ok = raw !== '' && !Number.isNaN(got) && Math.abs(got - want) <= Math.max(1e-6, Math.abs(want) * 0.001);
@@ -253,7 +242,6 @@ function checkAnswer(card) {
         return { ok };
     }
 
-    // matching
     const rows = $$('.match-row', card);
     const results = rows.map(row => {
         const chip = $('.drag-item', $('.drop-zone', row));
@@ -266,7 +254,6 @@ function setHintTitle(card, shown, total) {
     $('.hint-title', card).textContent = total > 1 ? `Hints (${shown} of ${total})` : 'Hint';
 }
 
-/* Reveal the next hint: every wrong attempt unlocks a better one and the earlier ones stay visible. */
 function revealHint(card, wrong) {
     const hints = $$('.hint-src span', card).map(h => h.textContent);
     if (!hints.length || wrong > hints.length) return false;
@@ -291,7 +278,6 @@ function setVerdict(card, kind, text) {
     verdict.textContent = text;
 }
 
-/* A wrong answer that is not final: keep the question open, take away what was wrong, unlock the next hint. */
 function wrongAttempt(card, check) {
     const type = card.dataset.type;
     const wrong = (parseInt(card.dataset.wrong, 10) || 0) + 1;
@@ -314,9 +300,9 @@ function wrongAttempt(card, check) {
         check.results.forEach(r => {
             const zone = $('.drop-zone', r.row);
             const chip = $('.drag-item', zone);
-            if (r.ok) {                                   // solved rows lock in green
+            if (r.ok) {
                 zone.classList.add('zone-correct');
-            } else if (chip) {                            // wrong chips go back to the pool
+            } else if (chip) {
                 pool.appendChild(chip);
             }
         });
@@ -335,7 +321,6 @@ function wrongAttempt(card, check) {
     setVerdict(card, 'retry', text);
 }
 
-/* The question is finished: right answer, or out of tries and the answer is revealed. */
 function finishCard(card, tier, index, check, revealed) {
     const type = card.dataset.type;
     const correct = card.dataset.answer.trim().toLowerCase();
@@ -348,7 +333,7 @@ function finishCard(card, tier, index, check, revealed) {
             opt.classList.remove('selected');
             if (v === correct) { opt.classList.remove('is-wrong', 'eliminated'); opt.classList.add('is-correct'); }
         });
-        if (revealed && check.sel) check.sel.closest('.option').classList.add('is-wrong');   // the last wrong pick
+        if (revealed && check.sel) check.sel.closest('.option').classList.add('is-wrong');
         if (revealed) {
             const right = $(`input[value="${correct}"]`, card);
             if (right) detail = 'Correct answer: ' + right.closest('.option').textContent.trim().replace(/\s+/g, ' ');
@@ -373,7 +358,7 @@ function finishCard(card, tier, index, check, revealed) {
             zone.classList.add('zone-wrong');
             const note = document.createElement('div');
             note.className = 'correct-note';
-            note.textContent = 'Correct: ' + r.row.dataset.correct;      // textContent: answers come from an LLM
+            note.textContent = 'Correct: ' + r.row.dataset.correct;
             r.row.appendChild(note);
         });
         if (revealed) {
@@ -392,7 +377,7 @@ function finishCard(card, tier, index, check, revealed) {
     else if (wrong === 0) { kind = 'correct';   text = 'Correct!'; }
     else                  { kind = 'partial';   text = `Correct, with ${wrong} ${wrong === 1 ? 'hint' : 'hints'} used.`; }
     setVerdict(card, kind, text.trim());
-    $('.explanation', card).hidden = false;              // explanation only appears once the question is finished
+    $('.explanation', card).hidden = false;
 
     const dot = $$('.dot', sectionOf(tier))[index];
     dot.classList.remove('ok', 'partial', 'bad');
@@ -414,7 +399,6 @@ function gradeCard(card, tier, index) {
     }
 }
 
-/* ------------------------------------------------------------ results / progression */
 function cardMarks(card) {
     return parseFloat(card.dataset.marks) || 0;
 }
@@ -424,10 +408,9 @@ function cardWrong(card) {
 }
 
 function starsFor(pct) {
-    return 1 + STAR_STEPS.filter(step => pct >= step).length;      // escaping is worth 1 star, up to 5 for a flawless run
+    return 1 + STAR_STEPS.filter(step => pct >= step).length;
 }
 
-/* Totals over every finished question of every level: used for the stars and the weak-topic list. */
 function runStats() {
     const cards = $$('.question-card').filter(c => c.dataset.marks !== undefined);
     const total = cards.length;
@@ -452,12 +435,10 @@ function renderFinal(res) {
     const extra = $('.final-extra', res);
     if (!extra) return;
 
-    // stars: coloured up to the number earned
     $$('.star-big', extra).forEach((star, i) => star.classList.toggle('on', i < stats.stars));
     $('.earned-count', extra).textContent = stats.stars;
     $('.earned-word', extra).textContent = stats.stars === 1 ? 'star' : 'stars';
 
-    // weak topics
     const list = $('.weak-list', extra);
     list.textContent = '';
     stats.weak.forEach(row => {
@@ -465,7 +446,7 @@ function renderFinal(res) {
 
         const name = document.createElement('span');
         name.className = 'weak-name';
-        name.textContent = row.topic;                                  // textContent: topics come from an LLM
+        name.textContent = row.topic;
 
         const info = document.createElement('span');
         info.className = 'weak-info';
@@ -484,7 +465,7 @@ function renderFinal(res) {
     list.hidden = stats.weak.length === 0;
     extra.hidden = false;
 
-    if (!starsAwarded) {                      // collect once per run
+    if (!starsAwarded) {
         starsAwarded = true;
         window.Stars.add(stats.stars);
     }
@@ -499,7 +480,6 @@ function showResult(tier) {
     const pct = total ? (marks / total) * 100 : 100;
     const passed = pct >= PASS_PERCENT;
     const isLast = tier === tiers[tiers.length - 1];
-    const next = isLast ? null : tiers[tiers.indexOf(tier) + 1];
     const reward = REWARDS[tier];
 
     const res = $('.result', sec);
@@ -516,7 +496,7 @@ function showResult(tier) {
 
     if (passed) {
         cleared[tier] = true;
-        earned[reward.item] = true;                       // key after Easy, gate after Medium, exit after Hard
+        earned[reward.item] = true;
         $('.res-title', res).textContent = reward.title;
         $('.res-msg', res).textContent = reward.msg;
         $('.resPrimary', res).textContent = reward.btn;
@@ -540,7 +520,7 @@ function showResult(tier) {
 function resultPrimary(tier) {
     const res = $('.result', sectionOf(tier));
     if (res.dataset.passed === '1') {
-        if (tier === tiers[tiers.length - 1]) window.location.reload();   // Play Again -> back to Easy
+        if (tier === tiers[tiers.length - 1]) playAgain();
         else unlockNextTier(tier);
     } else {
         retryTier(tier);
@@ -578,7 +558,7 @@ function retryTier(tier) {
 
         $$('.matching-container', card).forEach(container => {
             const pool = $('.draggable-pool', container);
-            $$('.drag-item', container).sort(() => Math.random() - 0.5).forEach(chip => pool.appendChild(chip));   // reshuffle
+            $$('.drag-item', container).sort(() => Math.random() - 0.5).forEach(chip => pool.appendChild(chip));
             $$('.drop-zone', container).forEach(z => z.classList.remove('zone-correct', 'zone-wrong'));
             refreshZones(container);
         });
@@ -591,11 +571,29 @@ function retryTier(tier) {
     window.scrollTo(0, 0);
 }
 
+function playAgain() {
+    tiers.forEach(t => {
+        const sec = sectionOf(t);
+        if ($('.quiz-shell', sec)) retryTier(t);
+        sec.classList.remove('active-tier');
+        cleared[t] = false;
+    });
+    earned.key = false;
+    earned.gate = false;
+    earned.exit = false;
+    starsAwarded = false;
+    currentTier = 'easy';
+    sectionOf('easy').classList.add('active-tier');
+    updateTracker();
+    updateControls();
+    window.scrollTo(0, 0);
+}
+
 function unlockNextTier(tier) {
     const i = tiers.indexOf(tier);
     if (i >= tiers.length - 1) return;
     const next = tiers[i + 1];
-    cleared[tier] = true;                    // also covers "Skip this level" on a level with no questions
+    cleared[tier] = true;
     sectionOf(tier).classList.remove('active-tier');
     sectionOf(next).classList.add('active-tier');
     currentTier = next;

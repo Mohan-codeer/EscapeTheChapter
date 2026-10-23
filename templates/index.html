@@ -24,18 +24,16 @@
             <h1 class="page-title">Chapter Escape</h1>
             <p class="tagline">A simple "educational game" that lets you understand by playing</p>
 
-            <input type="file" id="fileInput" style="display: none;" accept=".txt" multiple>
+            <input type="file" id="fileInput" style="display: none;" accept=".txt,.pdf" multiple>
 
-            <!-- Step 1: choose the chapter -->
             <section id="stepFile">
                 <h2 class="label">Chapter Content</h2>
                 <button id="uploadBtn" class="btn outline wide" type="button">Upload File</button>
-                <p class="subtext">(.txt files are supported)</p>
+                <p class="subtext">(.txt and .pdf files, up to 10MB each, 5 files at most)</p>
                 <p id="fileName" class="file-name">No file selected</p>
                 <button id="generateQuizBtn" class="btn primary wide" type="button" hidden>Generate Quiz</button>
             </section>
 
-            <!-- Step 2: how many questions? (asked before the quiz page opens) -->
             <section id="stepCount" hidden>
                 <h2 class="label">Number of questions required?</h2>
 
