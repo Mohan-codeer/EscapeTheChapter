@@ -1,28 +1,94 @@
-.hs {
-    height: 20px;
+:root {
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --navy: #1e3a8a;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #dbe4f5;
 }
 
-.subtext {
-    font-size: 12px;
-    text-align: center;
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Inter, "Segoe UI", system-ui, -apple-system, sans-serif;
+    color: var(--ink);
+    background: linear-gradient(135deg, #eef3ff 0%, #dce8ff 100%);
 }
 
-.textcenter {
-    text-align: center;
+.topbar { padding: 20px 40px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.brand { display: inline-flex; align-items: center; gap: 12px; text-decoration: none; }
+.logo {
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--blue); color: #fff;
+    display: grid; place-items: center; font-weight: 800; font-size: 22px;
+}
+.brand-name { font-size: 26px; font-weight: 800; color: var(--navy); }
+
+/* star counter (same look on every page) */
+.stars-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 14px; background: #fff; border: 2px solid #fde68a; border-radius: 999px;
+    font-weight: 800; font-size: 18px; color: var(--navy);
+    box-shadow: 0 4px 12px rgba(245, 158, 11, 0.15);
+}
+.star-ico { width: 20px; height: 20px; fill: #f59e0b; stroke: #d97706; stroke-width: 1; stroke-linejoin: round; }
+.stars-badge.pop { animation: starPop .6s ease; }
+@keyframes starPop { 0% { transform: scale(1); } 35% { transform: scale(1.25); } 100% { transform: scale(1); } }
+
+.stage { display: flex; justify-content: center; padding: 24px 16px 64px; }
+.card {
+    width: 100%; max-width: 520px; text-align: center;
+    background: #fff; border-radius: 24px; padding: 36px;
+    box-shadow: 0 20px 50px rgba(37, 99, 235, 0.12);
 }
 
-.divbutton {
-    width: 250px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-}
+.page-title { margin: 0; font-size: 34px; font-weight: 800; color: var(--navy); }
+.tagline { margin: 8px 0 28px; color: var(--muted); }
+.label { margin: 0 0 16px; font-size: 20px; color: var(--navy); }
 
-.styledbtn {
-    padding: 10px 20px;
-    cursor: pointer;
-    width: 100%;
-    background-color: rgb(100, 155, 250);
-    border-radius: 10px;
-    border-color: rgb(60, 100, 180);
+.btn {
+    display: block; width: 100%; cursor: pointer; text-align: center; text-decoration: none;
+    font: inherit; font-weight: 700; font-size: 17px;
+    padding: 14px 26px; border-radius: 14px; border: 2px solid transparent;
+}
+.btn + .btn { margin-top: 10px; }
+.btn.primary { background: var(--blue); color: #fff; box-shadow: 0 8px 20px rgba(37, 99, 235, 0.3); }
+.btn.primary:hover:not(:disabled) { background: var(--blue-dark); }
+.btn.outline { background: transparent; color: var(--blue); border-color: var(--blue); }
+.btn.outline:hover { background: #eff5ff; }
+.btn.ghost { background: transparent; color: var(--navy); border-color: var(--line); }
+.btn:disabled { background: #cbd5e1; color: #fff; box-shadow: none; cursor: not-allowed; }
+
+.subtext { margin: 10px 0; font-size: 13px; color: var(--muted); }
+.file-name { margin: 6px 0 18px; font-weight: 600; word-break: break-word; }
+#generateQuizBtn { margin-top: 4px; }
+
+/* number-of-questions step */
+.seg { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+.seg-opt input { position: absolute; opacity: 0; pointer-events: none; }
+.seg-opt span {
+    display: block; padding: 14px 10px; cursor: pointer; font-weight: 700;
+    background: #f3f5f9; border: 2px solid transparent; border-radius: 12px; color: var(--ink);
+}
+.seg-opt input:checked + span { background: #eaf1ff; border-color: var(--blue); color: var(--blue); }
+.seg-opt input:focus-visible + span { outline: 2px solid #93c5fd; outline-offset: 2px; }
+
+.count-input {
+    width: 100%; padding: 16px 18px; font-size: 22px; font-weight: 700; text-align: center;
+    border: 2px solid #cbd5e1; border-radius: 12px; background: #f3f5f9;
+}
+.count-input:focus { outline: none; border-color: var(--blue); background: #fff; }
+.count-input:disabled { opacity: 0.45; }
+
+#status { min-height: 1.4em; margin: 16px 0 0; font-weight: 600; }
+
+@media (max-width: 600px) {
+    .topbar { padding: 14px 16px; }
+    .stars-badge { font-size: 16px; padding: 4px 10px; }
+    .brand-name { font-size: 22px; }
+    .card { padding: 24px 18px; }
+    .page-title { font-size: 28px; }
 }

@@ -2,65 +2,107 @@ const fileInput = document.getElementById("fileInput");
 const uploadBtn = document.getElementById("uploadBtn");
 const fileNameDisplay = document.getElementById("fileName");
 const generateQuizBtn = document.getElementById("generateQuizBtn");
+const stepFile = document.getElementById("stepFile");
+const stepCount = document.getElementById("stepCount");
+const countInput = document.getElementById("countInput");
+const countHelp = document.getElementById("countHelp");
+const startBtn = document.getElementById("startBtn");
+const backBtn = document.getElementById("backBtn");
+const statusEl = document.getElementById("status");
 
-uploadBtn.addEventListener("click", () => {
-    fileInput.click();
-});
+const MIN_Q = 3;                 // no upper limit: the server asks the AI and reports if the passage cannot support it
+
+function setStatus(msg, isError) {
+    statusEl.textContent = msg;
+    statusEl.style.color = isError ? "#dc3545" : "inherit";
+}
+
+function countMode() {
+    return document.querySelector('input[name="countMode"]:checked').value;
+}
+
+uploadBtn.addEventListener("click", () => fileInput.click());
 
 fileInput.addEventListener("change", () => {
-    if (fileInput.files.length > 0) {
-        let oversized = false;
-        for (let i = 0; i < fileInput.files.length; i++) {
-            if (fileInput.files[i].size > 10 * 1024 * 1024) {
-                oversized = true;
-                break;
-            }
-        }
-
-        if (oversized) {
-            alert("One or more files are too large. Max size is 10MB.");
-            fileInput.value = "";
-            fileNameDisplay.textContent = "No file selected";
-            generateQuizBtn.style.display = "none";
-            return;
-        }
-
-        if (fileInput.files.length === 1) {
-            fileNameDisplay.textContent = `Selected: ${fileInput.files[0].name}`;
-        } else {
-            fileNameDisplay.textContent = `Selected: ${fileInput.files.length} files`;
-        }
-        generateQuizBtn.style.display = "block";
-    } else {
+    setStatus("", false);
+    if (fileInput.files.length === 0) {
         fileNameDisplay.textContent = "No file selected";
-        generateQuizBtn.style.display = "none";
+        generateQuizBtn.hidden = true;
+        return;
     }
+
+    const oversized = Array.from(fileInput.files).some(f => f.size > 10 * 1024 * 1024);
+    if (oversized) {
+        alert("One or more files are too large. Max size is 10MB.");
+        fileInput.value = "";
+        fileNameDisplay.textContent = "No file selected";
+        generateQuizBtn.hidden = true;
+        return;
+    }
+
+    fileNameDisplay.textContent = fileInput.files.length === 1
+        ? `Selected: ${fileInput.files[0].name}`
+        : `Selected: ${fileInput.files.length} files`;
+    generateQuizBtn.hidden = false;
 });
 
+// Step 1 -> step 2: ask how many questions BEFORE anything is sent or the quiz page opens
 generateQuizBtn.addEventListener("click", () => {
-    const formData = new FormData();
-    for (let i = 0; i < fileInput.files.length; i++) {
-        formData.append("fileInput", fileInput.files[i]);
+    setStatus("", false);
+    stepFile.hidden = true;
+    stepCount.hidden = false;
+    if (countMode() === "number") countInput.focus();
+});
+
+backBtn.addEventListener("click", () => {
+    setStatus("", false);
+    stepCount.hidden = true;
+    stepFile.hidden = false;
+});
+
+document.querySelectorAll('input[name="countMode"]').forEach(radio => {
+    radio.addEventListener("change", () => {
+        const isMax = countMode() === "max";
+        countInput.disabled = isMax;
+        countHelp.textContent = isMax
+            ? "As many questions as the chapter supports."
+            : `At least ${MIN_Q} questions, split across Easy, Medium and Hard. There is no upper limit.`;
+    });
+});
+
+countInput.addEventListener("keydown", e => { if (e.key === "Enter") startBtn.click(); });
+
+startBtn.addEventListener("click", async () => {
+    let count = "max";
+    if (countMode() === "number") {
+        const n = Number(countInput.value);
+        if (!Number.isInteger(n) || n < MIN_Q) {
+            setStatus(`Enter a whole number of at least ${MIN_Q}.`, true);
+            return;
+        }
+        count = String(n);
     }
 
-    fetch("/upload", {
-        method: "POST",
-        body: formData
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error(`Server returned status ${response.status}`);
-        }
-        return response.json();
-    })
-    .then(data => {
-        if (data.redirect) {
+    const formData = new FormData();
+    for (const file of fileInput.files) formData.append("fileInput", file);
+    formData.append("count", count);
+
+    startBtn.disabled = true;                  // stops double-clicks firing several (paid) Groq calls
+    backBtn.disabled = true;
+    setStatus("Generating quiz... this can take up to a minute.", false);
+
+    try {
+        const response = await fetch("/upload", { method: "POST", body: formData });
+        const data = await response.json().catch(() => ({}));
+        if (response.ok && data.redirect) {
             window.location.href = data.redirect;
-        } else {
-            console.error("No redirect URL provided in response.");
+            return;
         }
-    })
-    .catch(error => {
-        console.error("Fetch failed with error:", error);
-    });
+        setStatus(data.error || `Server returned status ${response.status}`, true);
+    } catch (err) {
+        console.error("Fetch failed with error:", err);
+        setStatus("Could not reach the server.", true);
+    }
+    startBtn.disabled = false;
+    backBtn.disabled = false;
 });

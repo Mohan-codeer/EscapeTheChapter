@@ -2,87 +2,199 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Quiz Interface - Tiered Progression</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ topic }} - Quiz</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/quiz.css') }}">
 </head>
 <body>
 
-    <h1>Generated Quiz - <span id="current-tier-title">Easy Level</span></h1>
-    <div id="score-display"></div>
+{# icon sprite: referenced with <use href="#i-..."> #}
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+    <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 2.5l2.9 6.1 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.3 1.3-6.6-4.9-4.6 6.6-.8z"/></symbol>
+    <symbol id="i-key" viewBox="0 0 24 24"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3L21 2M16 7l3 3M13.5 9.5l2.2 2.2"/></symbol>
+    <symbol id="i-gate" viewBox="0 0 24 24"><path d="M4 21V10a8 8 0 0 1 16 0v11M2 21h20M8 21V8.5M12 21V4M16 21V8.5M4 14h16"/></symbol>
+    <symbol id="i-door" viewBox="0 0 24 24"><path d="M5 21V4a1 1 0 0 1 1-1h9a1 1 0 0 1 1 1v17M2 21h20M16 8h3a1 1 0 0 1 1 1v12"/><circle cx="12.5" cy="12.5" r="0.9" fill="currentColor"/></symbol>
+</svg>
 
-    {% if questions %}
-        {% for tier in ['easy', 'medium', 'hard'] %}
-            <div class="tier-section {% if tier == 'easy' %}active-tier{% endif %}" id="tier-{{ tier }}">
-                <h2>Level: {{ tier | capitalize }}</h2>
+<header class="topbar">
+    <a class="brand" href="{{ url_for('index') }}"><span class="logo">C</span><span class="brand-name">Chapter Escape</span></a>
+    <div class="stars-badge" title="Stars collected" aria-label="Stars collected">
+        <svg class="star-ico" viewBox="0 0 24 24" aria-hidden="true"><use href="#i-star"/></svg>
+        <span class="stars-count">0</span>
+    </div>
+</header>
 
-                {% if questions[tier] %}
-                    <form class="quizForm" data-tier="{{ tier }}">
-                        {% for q in questions[tier] %}
-                            <div class="question-card {% if loop.first %}active{% endif %}" data-index="{{ loop.index0 }}" data-answer="{{ q.answer | default('') }}" data-type="{{ q.type }}">
-                                <h3>Question {{ loop.index }} of {{ questions[tier] | length }}: {{ q.question }}</h3>
+{# escape path: Easy -> Key -> Medium -> Gate -> Hard -> Exit. JS sets data-state on every piece #}
+<nav class="path" aria-label="Escape progress">
+    <div class="p-node" data-tier="easy" data-state="active"><span class="p-dot">1</span><span class="p-name">Easy</span></div>
+    <span class="p-line"></span>
+    <div class="p-item" data-item="key" data-state="locked" title="Key: unlocked by finishing Easy"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg><span class="p-name">Key</span></div>
+    <span class="p-line"></span>
+    <div class="p-node" data-tier="medium" data-state="locked"><span class="p-dot">2</span><span class="p-name">Medium</span></div>
+    <span class="p-line"></span>
+    <div class="p-item" data-item="gate" data-state="locked" title="Gate: unlocked by finishing Medium"><svg viewBox="0 0 24 24"><use href="#i-gate"/></svg><span class="p-name">Gate</span></div>
+    <span class="p-line"></span>
+    <div class="p-node" data-tier="hard" data-state="locked"><span class="p-dot">3</span><span class="p-name">Hard</span></div>
+    <span class="p-line"></span>
+    <div class="p-item" data-item="exit" data-state="locked" title="Exit: reached by finishing Hard"><svg viewBox="0 0 24 24"><use href="#i-door"/></svg><span class="p-name">Exit</span></div>
+</nav>
 
-                                {% if q.type == 'mcq' %}
-                                    <div class="options">
-                                        {% set labels = ['a', 'b', 'c', 'd'] %}
-                                        {% for option in q.options %}
-                                            <label>
-                                                <input type="radio" name="q_{{ tier }}_{{ loop.index0 }}" value="{{ labels[loop.index0] }}">
-                                                {{ labels[loop.index0] }}) {{ option }}
-                                            </label>
-                                        {% endfor %}
-                                    </div>
+<main class="stage">
+{% for tier in ['easy', 'medium', 'hard'] %}
+    <section class="tier-section {% if tier == 'easy' %}active-tier{% endif %}" id="tier-{{ tier }}">
 
-                                {% elif q.type == 'trueorfalse' %}
-                                    <div class="options">
-                                        <label><input type="radio" name="q_{{ tier }}_{{ loop.index0 }}" value="1"> True</label>
-                                        <label><input type="radio" name="q_{{ tier }}_{{ loop.index0 }}" value="0"> False</label>
-                                    </div>
+    {% if questions and questions[tier] %}
+        <div class="quiz-shell">
+            <div class="card quiz-card">
+                <h1 class="quiz-title">{{ topic }}: {{ tier | capitalize }} Level</h1>
+                <p class="quiz-sub">Question <span class="q-num">1</span> of {{ questions[tier] | length }}</p>
 
-                                {% elif q.type == 'numerical' %}
-                                    <div>
-                                        <input type="text" name="q_{{ tier }}_{{ loop.index0 }}" placeholder="Enter number">
-                                    </div>
+                {# onsubmit: a lone text input would otherwise submit the form on Enter and reload the page #}
+                <form class="quizForm" data-tier="{{ tier }}" onsubmit="return false;">
+                {% for q in questions[tier] %}
+                    {# loop.index0 inside an inner loop is the OPTION index, so save the question index here #}
+                    {% set qi = loop.index0 %}
+                    <div class="question-card {% if loop.first %}active{% endif %}" data-index="{{ qi }}" data-answer="{{ q.answer | default('') }}" data-type="{{ q.type }}" data-topic="{{ q.topic | default('General') }}">
+                        <h2 class="q-text">{{ loop.index }}. {{ q.question }}</h2>
 
-                                {% elif q.type == 'matching' %}
-                                    <div class="matching-container" data-correct-mapping="{{ q.answer }}">
-                                        <div style="display: flex; flex-direction: column; gap: 10px;">
-                                            {% for pair in q.pairs %}
-                                                <div class="match-row" data-pair-index="{{ loop.index0 }}">
-                                                    <span style="width: 45%; font-weight: bold;">{{ pair.left }}</span>
-                                                    <div class="drop-zone" ondragover="allowDrop(event)" ondrop="drop(event, this)" data-assigned="">Drop matching definition here</div>
-                                                </div>
-                                            {% endfor %}
-                                        </div>
-                                        <p style="margin-top: 15px; font-weight: bold;">Available Definitions (Drag these):</p>
-                                        <div class="draggable-pool" ondragover="allowDrop(event)" ondrop="dropToPool(event)">
-                                            {% for pair in q.pairs | shuffle %}
-                                                <div class="drag-item" draggable="true" ondragstart="drag(event)" data-text="{{ pair.right }}">{{ pair.right }}</div>
-                                            {% endfor %}
-                                        </div>
-                                    </div>
-                                {% endif %}
-
-                                <div class="feedback" style="margin-top: 15px;"></div>
+                        {% if q.type == 'mcq' %}
+                            <div class="options">
+                                {% set labels = ['A', 'B', 'C', 'D'] %}
+                                {% for option in q.options %}
+                                    <label class="option">
+                                        <input type="radio" name="q_{{ tier }}_{{ qi }}" value="{{ labels[loop.index0] | lower }}">
+                                        <span class="radio-dot"></span>
+                                        <span class="opt-letter">{{ labels[loop.index0] }}.</span>
+                                        <span class="opt-text">{{ option }}</span>
+                                    </label>
+                                {% endfor %}
                             </div>
-                        {% endfor %}
 
-                        <div class="nav-buttons">
-                            <button type="button" class="prevBtn" onclick="changeCard(this, -1)" disabled>Previous</button>
-                            <button type="button" class="nextBtn" onclick="changeCard(this, 1)">Next</button>
-                            <button type="button" class="submitBtn" onclick="gradeTier(event, '{{ tier }}')" style="display: none;">Submit {{ tier | capitalize }} Level</button>
+                        {% elif q.type == 'trueorfalse' %}
+                            <div class="options">
+                                <label class="option"><input type="radio" name="q_{{ tier }}_{{ qi }}" value="true"><span class="radio-dot"></span><span class="opt-text">True</span></label>
+                                <label class="option"><input type="radio" name="q_{{ tier }}_{{ qi }}" value="false"><span class="radio-dot"></span><span class="opt-text">False</span></label>
+                            </div>
+
+                        {% elif q.type == 'numerical' %}
+                            <div class="num-wrap">
+                                <input type="text" class="num-input" inputmode="decimal" autocomplete="off" name="q_{{ tier }}_{{ qi }}" placeholder="Enter a number">
+                            </div>
+
+                        {% elif q.type == 'matching' %}
+                            <div class="matching-container">
+                                <div class="match-rows">
+                                    {% for pair in q.pairs %}
+                                        <div class="match-row" data-correct="{{ pair.right }}">
+                                            <span class="match-term">{{ pair.left }}</span>
+                                            <div class="drop-zone" ondragover="allowDrop(event)" ondrop="drop(event, this)"><span class="placeholder">Drop matching definition here</span></div>
+                                        </div>
+                                    {% endfor %}
+                                </div>
+                                <p class="pool-label">Available definitions (drag, or tap one and then tap a box):</p>
+                                <div class="draggable-pool" ondragover="allowDrop(event)" ondrop="dropToPool(event)">
+                                    {% for pair in q.pairs | shuffle %}
+                                        <div class="drag-item" draggable="true" ondragstart="drag(event)" data-text="{{ pair.right }}">{{ pair.right }}</div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        {% endif %}
+
+                        {# Hints: three, increasingly helpful. Hidden until the first wrong answer; each further
+                           wrong answer adds the next one (see wrongAttempt in quiz.js). #}
+                        <div class="hint-src" hidden>{% for h in q.hints %}<span>{{ h }}</span>{% endfor %}</div>
+                        <details class="hint" hidden>
+                            <summary>
+                                <svg class="chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                                <svg class="ico-closed" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6z"/></svg>
+                                <svg class="ico-open" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>
+                                <span class="hint-title">Hint</span>
+                            </summary>
+                            <ol class="hint-list"></ol>
+                        </details>
+
+                        {# Verdict shows after every attempt; the explanation only once the question is finished #}
+                        <div class="feedback" hidden>
+                            <div class="verdict"></div>
+                            <div class="explanation" hidden>
+                                <span class="exp-title">Explanation</span>
+                                <p>{{ q.explanation }}</p>
+                            </div>
                         </div>
-                    </form>
-                {% else %}
-                    <p>No questions generated for this tier.</p>
-                    <button type="button" onclick="unlockNextTier('{{ tier }}')">Skip Tier</button>
-                {% endif %}
+                    </div>
+                {% endfor %}
+                </form>
+
+                <div class="dots">
+                    {% for q in questions[tier] %}<span class="dot{% if loop.first %} current{% endif %}"></span>{% endfor %}
+                </div>
             </div>
-        {% endfor %}
+
+            <div class="controls">
+                <button type="button" class="btn ghost prevBtn" onclick="stepCard(this, -1)" disabled>Previous</button>
+                <button type="button" class="btn primary actionBtn" onclick="primaryAction('{{ tier }}')" disabled>Submit</button>
+                <span></span>
+            </div>
+        </div>
+
+        <div class="card result" hidden>
+            <h1 class="res-title">Level Complete!</h1>
+
+            {# reward: the key (Easy), the gate (Medium) or the exit (Hard); filled in by showResult #}
+            <div class="reward" hidden>
+                <div class="reward-icon"><svg viewBox="0 0 24 24"><use href="#i-key"/></svg></div>
+                <div class="reward-name"></div>
+            </div>
+
+            <div class="ring" style="--pct: 0"><div class="ring-inner"><div class="ring-value">0%</div><div class="ring-label">Score</div></div></div>
+            <div class="tiles">
+                <div class="tile"><span class="tile-label">Marks</span><span class="tile-value res-correct">0 / 0</span></div>
+                <div class="tile"><span class="tile-label">Hints used</span><span class="tile-value res-hints">0</span></div>
+                <div class="tile"><span class="tile-label">Level</span><span class="tile-value">{{ tier | capitalize }}</span></div>
+            </div>
+            <p class="res-msg"></p>
+
+            {% if tier == 'hard' %}
+            <div class="final-extra" hidden>
+                <div class="earned">
+                    <div class="star-row" aria-label="Stars earned">
+                        {% for n in range(5) %}<svg class="star-big" viewBox="0 0 24 24"><use href="#i-star"/></svg>{% endfor %}
+                    </div>
+                    <p class="earned-text">You earned <strong class="earned-count">0</strong> <span class="earned-word">stars</span> out of 5</p>
+                </div>
+                <div class="weak">
+                    <h2 class="weak-title">Topics where you lost marks</h2>
+                    <ul class="weak-list"></ul>
+                    <p class="weak-none" hidden>No marks lost. You have a solid grip on every topic.</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="res-buttons">
+                <button type="button" class="btn primary resPrimary" onclick="resultPrimary('{{ tier }}')">Continue</button>
+                <button type="button" class="btn ghost" onclick="reviewTier('{{ tier }}')">Review answers</button>
+                <a class="btn outline" href="{{ url_for('index') }}">New Quiz</a>
+            </div>
+        </div>
+
     {% else %}
-        <p>No questions found. Please upload a text file first.</p>
-        <a href="{{ url_for('index') }}">Go back to upload</a>
+        <div class="card result">
+            <h1 class="res-title">{{ tier | capitalize }} Level</h1>
+            <p class="res-msg">No questions were generated for this level.</p>
+            <div class="res-buttons">
+                {% if tier != 'hard' %}
+                    <button type="button" class="btn primary" onclick="unlockNextTier('{{ tier }}')">Skip this level</button>
+                {% endif %}
+                <a class="btn outline" href="{{ url_for('index') }}">New Quiz</a>
+            </div>
+        </div>
     {% endif %}
 
-    <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+    </section>
+{% endfor %}
+</main>
+
+<script src="{{ url_for('static', filename='js/stars.js') }}"></script>
+<script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
 </body>
 </html>
