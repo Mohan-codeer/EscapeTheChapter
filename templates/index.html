@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/index.css') }}">
+    <title>Chapter Escape</title>
+</head>
+<body>
+    <h1>Chapter Escape</h1>
+    <p id="p">A Simple "Educational Game" that lets you understand by playing</p>
+    <div class="hs"></div>
+
+    <h2>Chapter Content</h2>
+
+    <input type="file" id="fileInput" style="display: none;" accept=".png, .jpg, .jpeg, .pdf, .txt" multiple>
+    <div class="divbutton">
+        <button id="uploadBtn" class="styledbtn">Upload File</button>
+        <p class="subtext">(.png, .jpg, .pdf, .txt are supported)</p>
+        <p id="fileName">No file selected</p>
+        <button id="generateQuizBtn" class="styledbtn" style="display: none; margin-top: 10px;">Generate Quiz</button>
+    </div>
+
+    <script src="{{ url_for('static', filename='js/index.js') }}"></script>
+</body>
+</html>

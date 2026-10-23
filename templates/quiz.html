@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Quiz Interface - Tiered Progression</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/quiz.css') }}">
+</head>
+<body>
+
+    <h1>Generated Quiz - <span id="current-tier-title">Easy Level</span></h1>
+    <div id="score-display"></div>
+
+    {% if questions %}
+        {% for tier in ['easy', 'medium', 'hard'] %}
+            <div class="tier-section {% if tier == 'easy' %}active-tier{% endif %}" id="tier-{{ tier }}">
+                <h2>Level: {{ tier | capitalize }}</h2>
+
+                {% if questions[tier] %}
+                    <form class="quizForm" data-tier="{{ tier }}">
+                        {% for q in questions[tier] %}
+                            <div class="question-card {% if loop.first %}active{% endif %}" data-index="{{ loop.index0 }}" data-answer="{{ q.answer | default('') }}" data-type="{{ q.type }}">
+                                <h3>Question {{ loop.index }} of {{ questions[tier] | length }}: {{ q.question }}</h3>
+
+                                {% if q.type == 'mcq' %}
+                                    <div class="options">
+                                        {% set labels = ['a', 'b', 'c', 'd'] %}
+                                        {% for option in q.options %}
+                                            <label>
+                                                <input type="radio" name="q_{{ tier }}_{{ loop.index0 }}" value="{{ labels[loop.index0] }}">
+                                                {{ labels[loop.index0] }}) {{ option }}
+                                            </label>
+                                        {% endfor %}
+                                    </div>
+
+                                {% elif q.type == 'trueorfalse' %}
+                                    <div class="options">
+                                        <label><input type="radio" name="q_{{ tier }}_{{ loop.index0 }}" value="1"> True</label>
+                                        <label><input type="radio" name="q_{{ tier }}_{{ loop.index0 }}" value="0"> False</label>
+                                    </div>
+
+                                {% elif q.type == 'numerical' %}
+                                    <div>
+                                        <input type="text" name="q_{{ tier }}_{{ loop.index0 }}" placeholder="Enter number">
+                                    </div>
+
+                                {% elif q.type == 'matching' %}
+                                    <div class="matching-container" data-correct-mapping="{{ q.answer }}">
+                                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                                            {% for pair in q.pairs %}
+                                                <div class="match-row" data-pair-index="{{ loop.index0 }}">
+                                                    <span style="width: 45%; font-weight: bold;">{{ pair.left }}</span>
+                                                    <div class="drop-zone" ondragover="allowDrop(event)" ondrop="drop(event, this)" data-assigned="">Drop matching definition here</div>
+                                                </div>
+                                            {% endfor %}
+                                        </div>
+                                        <p style="margin-top: 15px; font-weight: bold;">Available Definitions (Drag these):</p>
+                                        <div class="draggable-pool" ondragover="allowDrop(event)" ondrop="dropToPool(event)">
+                                            {% for pair in q.pairs | shuffle %}
+                                                <div class="drag-item" draggable="true" ondragstart="drag(event)" data-text="{{ pair.right }}">{{ pair.right }}</div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                {% endif %}
+
+                                <div class="feedback" style="margin-top: 15px;"></div>
+                            </div>
+                        {% endfor %}
+
+                        <div class="nav-buttons">
+                            <button type="button" class="prevBtn" onclick="changeCard(this, -1)" disabled>Previous</button>
+                            <button type="button" class="nextBtn" onclick="changeCard(this, 1)">Next</button>
+                            <button type="button" class="submitBtn" onclick="gradeTier(event, '{{ tier }}')" style="display: none;">Submit {{ tier | capitalize }} Level</button>
+                        </div>
+                    </form>
+                {% else %}
+                    <p>No questions generated for this tier.</p>
+                    <button type="button" onclick="unlockNextTier('{{ tier }}')">Skip Tier</button>
+                {% endif %}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No questions found. Please upload a text file first.</p>
+        <a href="{{ url_for('index') }}">Go back to upload</a>
+    {% endif %}
+
+    <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+</body>
+</html>

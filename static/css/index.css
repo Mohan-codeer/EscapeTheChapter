@@ -1,0 +1,28 @@
+.hs {
+    height: 20px;
+}
+
+.subtext {
+    font-size: 12px;
+    text-align: center;
+}
+
+.textcenter {
+    text-align: center;
+}
+
+.divbutton {
+    width: 250px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.styledbtn {
+    padding: 10px 20px;
+    cursor: pointer;
+    width: 100%;
+    background-color: rgb(100, 155, 250);
+    border-radius: 10px;
+    border-color: rgb(60, 100, 180);
+}
