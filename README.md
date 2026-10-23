@@ -74,3 +74,5 @@ requirements.txt    Python dependencies
 - Supported files: `.txt` and PDFs that contain selectable text
 - Maximum 5 files, 10MB each, PDFs up to 200 pages
 - At most 60,000 characters of text are used per quiz
+
+Youtube Link: https://www.youtube.com/watch?v=0w3T13zY40U
